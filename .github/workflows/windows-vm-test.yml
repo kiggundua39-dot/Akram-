@@ -1,5 +1,4 @@
-
-name: Windows 10 Docker VM Test
+name: Windows 10 Private RDP Test
 
 on:
   workflow_dispatch:
@@ -7,10 +6,27 @@ on:
 jobs:
   windows:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
 
     steps:
-      - name: Start Windows 10 VM
+      - name: Connect runner to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+
+      - name: Get private Tailscale IP
+        run: |
+          TS_IP="$(tailscale ip -4 | head -n 1)"
+          if [ -z "$TS_IP" ]; then
+            echo "Could not get Tailscale IP"
+            exit 1
+          fi
+          echo "TS_IP=$TS_IP" >> "$GITHUB_ENV"
+          echo "Private RDP address: $TS_IP:3389"
+
+      - name: Start Windows 10
+        env:
+          WIN_PASSWORD: ${{ secrets.WIN_PASSWORD }}
         run: |
           docker pull dockurr/windows
 
@@ -19,26 +35,31 @@ jobs:
             --device=/dev/kvm \
             --device=/dev/net/tun \
             --cap-add NET_ADMIN \
-            -p 127.0.0.1:8006:8006 \
-            -p 127.0.0.1:3389:3389/tcp \
-            -p 127.0.0.1:3389:3389/udp \
+            -p "${TS_IP}:3389:3389/tcp" \
+            -p "${TS_IP}:3389:3389/udp" \
             -e VERSION=10 \
+            -e USERNAME=Akram \
+            -e "PASSWORD=$WIN_PASSWORD" \
             -e RAM_SIZE=8G \
             -e CPU_CORES=2 \
             -v "$PWD/windows:/storage" \
             --stop-timeout 120 \
             dockurr/windows
 
-      - name: Allow Windows to initialize
-        run: sleep 300
+          echo "Waiting for Windows to start..."
+          sleep 300
+          docker logs --tail 120 windows10
 
-      - name: Inspect Windows installation
+          echo "Private RDP address: ${TS_IP}:3389"
+          echo "Keeping test online for 10 minutes..."
+          sleep 600
+
+      - name: Inspect Windows
         if: always()
         run: |
           docker ps -a
-          docker logs --tail 150 windows10
+          docker logs --tail 100 windows10 || true
 
       - name: Clean up
         if: always()
         run: docker rm -f windows10 || true
-        
