@@ -1,0 +1,31 @@
+
+name: Windows Docker Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Docker
+        run: docker --version
+
+      - name: Check Docker Compose
+        run: docker compose version
+
+      - name: Check KVM
+        run: |
+          if [ -e /dev/kvm ]; then
+            echo "SUCCESS: KVM is available"
+            ls -l /dev/kvm
+          else
+            echo "WARNING: KVM is NOT available"
+          fi
+
+      - name: Check memory
+        run: free -h
+
+      - name: Check storage
+        run: df -h /
+        
